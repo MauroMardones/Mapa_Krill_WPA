@@ -1,0 +1,542 @@
+---
+title: "Mapas_Krill bloque 48 Península Antártica"
+subtitle: ""
+author: "Mauricio Mardones I"
+date: "`r format(Sys.time(), '%d %b %Y')`"
+output: pdf_document
+toc: TRUE
+toc_depth: 3 
+theme: united
+toc-title: "INDICE"
+---
+
+\pagebreak
+
+# Objetivo del documento
+
+Este documento contiene análisis exploratorios de diversas bases de datos dde Krill para ver series de tiempo identificando patrones espaciales y temporales de distintos indicadores a traves de mapas, ya sea de la dinamica de la poblaciòn y su estructura, asi como también de la pesquería asociada.
+
+Para el análisis, debemos tener los siguientes archivos de trabajo;
+
+1.  Archivo denominado *"catk"*, que se refiere a data de la pesquería de krill entre los años 1980 y 2019 de las áreas 48.1 y 48.2.
+
+
+\pagebreak
+
+
+```{r setup}
+# Primero limpio y seteo mi directorio de trabajo
+rm(list = ls())
+#setwd("~/DOCAS/Data/Explora_Data_krill")
+getwd()
+```
+
+Cargo librerías necesarias para el análisis exploratorio de los datos de las distintas bases
+
+```{r lib, warning=F, message=F, error=F}
+library(GGally)
+library(tidyverse, quietly = TRUE)
+library(patchwork)
+library(marmap)
+library(mapproj)
+library(maps)
+library(tmap)
+library(tmaptools)
+library(raster)
+library(dbplyr)
+library(knitr)
+library(data.table)
+library(knitr, quietly = TRUE)
+library(ggrepel)
+library(CCAMLRGIS)
+library(sf)
+library(marmap)
+library(ggOceanMapsData) # Base de costa y profundidad
+library(ggOceanMaps)
+library(rnaturalearth)
+```
+
+
+Leo las tres bases de datos que contiene el archivo
+
+```{r data, message=FALSE, warning=FALSE}
+catk1 <- read_csv("cpuekrill1997_2000.csv") # Archivo con datos de bitacora pesquera entregado por Lukas Kruguer INACH
+kb <- read_csv("krillbase_data.csv") # Base completa del KRILLBASE. TOdas las Areas
+mdat <- read.csv("ASAM_metadata_2021_v2_tidy_0.csv") # ASAM Metadata 2021 Krill Biomass Estimate. by Tracey Dornan
+```
+
+
+```{r data2}
+# Genero una carpeta en donde alojar figuras
+dir.Fig        <-"Figuras/"
+fig            <-c("pdf","bmp")
+```
+
+
+\pagebreak
+
+Ahora genero unos mapas simples para ver distribución de variables pesqueras
+
+## Leo Shapes
+```{r preparo raster de subareas}
+#mapzona2 <- readShapePoly('~/DOCAS/Mapas/asd-shapefile-WGS84/asd-shapefile-WGS84.shp')
+mapzona2 <- st_read('shapes_areas_subareas.shp')
+cost <- st_read('shapes_coastile_high_res_polygon.shp') 
+ssmu <- st_read('shapes_SSMUs.shp')
+
+```
+
+## Renombro variables
+```{r}
+catk3 <- catk1 %>% 
+  rename(Latitude= latitude_set_end,
+         Longitude= longitude_set_end) %>% 
+  mutate(Catcht = greenweight_caught_kg/1000) %>% 
+  drop_na(Latitude)
+
+names(catk3)
+```
+Una forma de sacar un mapa
+
+
+```{r}
+world <- ne_countries(scale='medium',returnclass = 'sf')
+class(world)
+```
+
+
+```{r}
+anta <- ggplot(data = world) +
+     geom_sf(fill = "antiquewhite1") +
+     geom_spatial_point(data=catk%>%
+                 filter(year==2000),
+             aes(x=Longitude, y=Latitude, size=Catcht, alpha=0.1, colour=Catcht))+
+  scale_colour_gradient(low = "yellow", high = "red", name="Catch (kg/haul)")+
+  #scale_color_viridis_c(option="inferno", trans="log", breaks=mybreaks, name="Capt (t.)" , direction = -1) +
+  #scale_color_gradientn(colours=terrain.colors(5),limits=col.range)+
+  #scale_colour_brewer(palette = "Greens")+
+  guides(alpha=FALSE, size=FALSE)+
+     annotate(geom = "text", x = -66, y = -61, label = "48.1", 
+         color = "grey22", size = 4.5) +
+     coord_sf(crs = st_crs(4326), xlim = c(-68, -50), ylim = c(-68, -60)) +
+     xlab("Longitude")+ ylab("Latitude")+
+     theme(panel.grid.major = element_line(colour = gray(0.5), linetype = "dashed", 
+         size = 0.1), panel.background = element_rect(fill = "aliceblue"), 
+         panel.border = element_rect(fill = NA))
+
+anta2 <- ggplot(data = world) +
+     geom_sf(fill = "antiquewhite1") +
+     geom_spatial_point(data=catk%>%
+                 filter(year==2018),
+             aes(x=Longitude, y=Latitude, size=Catcht, alpha=0.1, colour=Catcht))+
+  scale_colour_gradient(low = "yellow", high = "red", name="Catch (kg/haul)")+
+  #scale_color_viridis_c(option="inferno", trans="log", breaks=mybreaks, name="Capt (t.)" , direction = -1) +
+  #scale_color_gradientn(colours=terrain.colors(5),limits=col.range)+
+  #scale_colour_brewer(palette = "Greens")+
+  guides(alpha=FALSE, size=FALSE)+
+     annotate(geom = "text", x = -66, y = -61, label = "48.1", 
+         color = "grey22", size = 4.5) +
+     coord_sf(crs = st_crs(4326), xlim = c(-68, -50), ylim = c(-68, -60)) +
+     xlab("Longitude")+ ylab("Latitude")+
+     theme(panel.grid.major = element_line(colour = gray(0.5), linetype = "dashed", 
+         size = 0.1), panel.background = element_rect(fill = "aliceblue"), 
+         panel.border = element_rect(fill = NA))
+anta|anta2
+
+#ggsave("anta.pdf", width = 10, height = 6)
+```
+
+
+```{r preparo raster de subareas 2}
+#cost1 <-  st_crop(y = st_bbox(c(xmin = -180, ymin = 35, xmax = 180, ymax = 90)))
+#plot(st_geometry(cost))
+# ahora eligo las subareas de interes
+mapzona2$Name
+# [1] "Subarea 88.3"     "Subarea 48.4"     "Subarea 88.2"     "Subarea 48.1"    
+#  [5] "Subarea 48.2"     "Subarea 48.3"     "Division 58.4.3a" "Division 58.4.3b"
+#  [9] "Division 58.5.2"  "Subarea 48.5"     "Subarea 48.6"     "Division 58.4.1" 
+# [13] "Division 58.4.2"  "Subarea 88.1"     "Division 58.4.4a" "Subarea 58.7"    
+# [17] "Subarea 58.6"     "Division 58.5.1"  "Division 58.4.4b"
+
+# extraigo las SA 48.1 y 48.2
+pm <- subset(mapzona2[c(4,5),])
+
+wp481 <- subset(mapzona2[(4),])
+wp482 <- subset(mapzona2[(5),])
+
+# ahora eligo las subareas de areas 48.1 y 48.2
+ssmu$Name
+#  [1] "SSMU 48.1 Pelagic Area"            
+#  [2] "SSMU 48.1 Antarctic Peninsula West"
+#  [3] "SSMU 48.1 Drake Passage West"      
+#  [4] "SSMU 48.1 Drake Passage East"      
+#  [5] "SSMU 48.1 Bransfield Strait West"  
+#  [6] "SSMU 48.1 Bransfield Strait East"  
+#  [7] "SSMU 48.1 Elephant Island"         
+#  [8] "SSMU 48.2 Pelagic Area"            
+#  [9] "SSMU 48.2 South Orkney West"       
+# [10] "SSMU 48.2 South North East"        
+# [11] "SSMU 48.2 South Orkney South East" 
+# [12] "SSMU 48.3 Pelagic Area"            
+# [13] "SSMU 48.3 South Georgia West"      
+# [14] "SSMU 48.3 South Georgia East"      
+# [15] "SSMU 48.4 Pelagic Area"            
+# [16] "SSMU 48.4 South Sandwich"          
+# [17] "SSMU 48.1 Antarctic Peninsula East"
+#ploteo solo la capa de bordes
+
+ssmu1 <- subset(ssmu[-c(12,13,14,15, 16),])
+
+plot(st_geometry(pm))
+plot(st_geometry(ssmu1))
+plot(st_geometry(wp481))
+plot(st_geometry(wp482))
+#transformo pra uso en ggplot. Hay otras formas con "sf". Pero he usado esta hace rato
+
+pm2 <- fortify(st_geometry(pm))
+ssmu2 <- fortify(st_geometry(ssmu1))
+wp4812 <- fortify(st_geometry(wp481))
+wp4822 <- fortify(st_geometry(wp482))
+
+```
+## Raster de Antartica
+
+```{r}
+an <- getData("GADM", country = "ATA", level = 0)
+an@data$NAME_0
+
+
+#
+e <- extent(-70,-40,-68,-50)
+rc <- crop(an, e)
+
+proj4string(rc) <- CRS("+init=epsg:4326")
+
+
+
+rc3 <- st_as_sf(rc) # par dejarlo en formato geom_sf
+
+plot(rc3)
+```
+
+Ahora paso el raster a un formato para ser usado por ggplot usando la función fortify como lo habiamos realizado anteriormente
+
+(Para leer shapes, debo utilizar *"geom_polygon()"*), sin embargo, ahora seguiré t rabajando con el archivo de *getData*.)
+
+```{r eval=F}
+rc2 <- fortify(rc)
+```
+
+```{r}
+mybreaks <- c(1, 10, 50)
+an1 <-ggplot() +
+  geom_sf(data = rc3)+
+  geom_sf(data = Grid, color="#d9d9d9", fill=NA) +
+  geom_point(data=catk %>% 
+               filter(year == 2018) %>% 
+               filter(asd_code==481), aes(x=Longitude, y=Latitude,
+                        colour=CPUE,  alpha=1/10))+
+  #annotation_north_arrow(location='tr')+
+  facet_wrap(~month ,ncol = 5)+
+  scale_size_continuous(name="CPUE",  range=c(1,12), breaks=mybreaks) +
+  #scale_alpha_continuous(name="Capt (t.)",  range=c(1, 12), breaks=mybreaks) +
+  scale_color_viridis_c(option="D", breaks=mybreaks, name="CPUE")+
+  theme_bw() + 
+  coord_sf() +
+  scale_alpha(guide="none")+
+  xlab(expression(paste(Longitude^o,~'O'))) +
+  ylab(expression(paste(Latitude^o,~'S')))+
+  guides( colour = guide_legend()) +
+  theme(panel.background = element_rect(fill = "#f7fbff"),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())+
+  theme(legend.position = "right")+
+  xlim(-70,-50)
+an2 <-ggplot() +
+  geom_sf(data = rc3) +
+  geom_point(data=catk %>% 
+               filter(year == 2017)%>% 
+               filter(asd_code==481), aes(x=Longitude, y=Latitude,
+                        colour=CPUE,  alpha=1/10))+
+  #annotation_north_arrow(location='tr')+
+  #facet_wrap(~month ,ncol = 5)+
+  scale_size_continuous(name="CPUE",  range=c(1,12), breaks=mybreaks) +
+  #scale_alpha_continuous(name="Capt (t.)",  range=c(1, 12), breaks=mybreaks) +
+  scale_color_viridis_c(option="D", breaks=mybreaks, name="CPUE")+
+  theme_bw() + 
+  coord_sf() +
+  scale_alpha(guide="none")+
+  xlab(expression(paste(Longitude^o,~'O'))) +
+  ylab(expression(paste(Latitude^o,~'S')))+
+  guides( colour = guide_legend()) +
+  theme(panel.background = element_rect(fill = "#f7fbff"),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())+
+  theme(legend.position = "right")+
+  xlim(-70,-50)
+an1|an2
+```
+
+## Grilla
+
+Como tengo overlaping, genero una grilla para vincular los datos
+
+```{r}
+#transformar los datos en un sf object
+catk2 <- st_as_sf(catk3, coords = c("Longitude", "Latitude"),  
+                  crs = 4326) 
+# disponer los datos dentro de la grilla
+
+Grid <- rc3 %>%
+  st_make_grid(cellsize = c(1,0.5)) %>% # para que quede cuadrada
+  st_cast("MULTIPOLYGON") %>%
+  st_sf() %>% # objeto en spatial feature
+  mutate(cellid = row_number()) 
+
+# la pruebo
+
+ggplot() +
+  geom_sf(data = Grid, color="grey",  fill=NA) +
+  geom_sf(data = rc3) +
+  geom_point(data=catk2 %>% 
+               filter(year == 2018) %>% 
+               filter(asd_code==481), 
+             aes(x=longitude_haul_start, y=latitude_haul_start,
+                        colour=CPUE,  alpha=1/10))+
+  
+  theme_minimal()
+```
+
+
+## Join data to grid
+
+```{r}
+# join data to grid; make sure to join points to grid
+# the first object drives the output geometry
+result <- Grid %>%
+  st_join(catk2) %>% 
+  group_by(cellid) %>% 
+  summarise(mean_cpue = mean(CPUE)) 
+
+# 
+# result2 <- Grid %>%
+#   st_join(catk2) %>% 
+#   group_by(cellid, year, month) %>% 
+#   summarise(mean_cpue = mean(CPUE))
+```
+
+## Plot final
+
+```{r}
+mybreaks <- c(1, 5,  10, 15,  20)
+mas <- ggplot() +
+  geom_sf(data=result %>% 
+            filter(mean_cpue>0), aes(fill = mean_cpue), 
+          alpha=0.7, color=NA) +
+  scale_fill_viridis_c(option="magma",
+                       breaks=mybreaks, direction=-1, name="CPUE (t./ time haul)")+
+  geom_sf(data = Grid,  fill=NA, color=NA) +
+  geom_sf(data = rc3) +
+  #geom_sf(data = ssmu, color="grey", fill=NA)+
+    #scale_fill_scico(palette = "davos") +
+  coord_sf() +
+  scale_alpha(guide="none")+
+  xlab(expression(paste(Longitude^o,~'O'))) +
+  ylab(expression(paste(Latitude^o,~'S')))+
+  guides(colour = guide_legend()) +
+  theme(panel.background = element_rect(fill = 'aliceblue'),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())+
+  xlim(-69,-45)+
+  ylim(-68,-60)
+mas
+```
+
+
+Ahora pruebo otra dimension espacial que contiene los 3 bloques, a saber; 48.1, 48.2 y 48.3.
+
+## otro Raster de Antartica
+
+```{r}
+an <- getData("GADM", country = "ATA", level = 0)
+an@data$NAME_0
+
+#
+e2 <- extent(-70,-35,-68,-60)
+rc <- crop(an, e2)
+
+proj4string(rc) <- CRS("+init=epsg:4326")
+
+plot(rc)
+
+rc4 <- st_as_sf(rc) # par dejarlo en formato geom_sf
+```
+
+
+```{r}
+# disponer los datos dentro de la grilla
+
+Grid2 <- rc4 %>%
+  st_make_grid(cellsize = c(1,0.5)) %>% # para que quede cuadrada
+  st_cast("MULTIPOLYGON") %>%
+  st_sf() %>% # objeto en spatial feature
+  mutate(cellid = row_number()) 
+
+# la pruebo
+
+ggplot() +
+  geom_sf(data = Grid2, color="grey",  fill=NA) +
+  geom_sf(data = rc4, fill=NA) +
+  theme_minimal()
+```
+## Join data to grid
+
+```{r}
+# join data to grid; make sure to join points to grid
+# the first object drives the output geometry
+result2 <- Grid2 %>%
+  st_join(catk2) %>% 
+  group_by(cellid) %>% 
+  summarise(mean_cpue = mean(CPUE)) 
+
+# 
+# result2 <- Grid %>%
+#   st_join(catk2) %>% 
+#   group_by(cellid, year, month) %>% 
+#   summarise(mean_cpue = mean(CPUE))
+```
+
+## Plot final
+
+```{r}
+mybreaks <- c(1, 5,  10, 15,  20)
+mas2 <- ggplot() +
+  geom_sf(data=result2 %>% 
+            filter(mean_cpue>0), aes(fill = mean_cpue), 
+          alpha=0.7, color=NA) +
+  scale_fill_viridis_c(option="magma",
+                       breaks=mybreaks, direction=-1, name="CPUE (t./ time haul)")+
+  geom_sf(data = Grid2,  fill=NA, color=NA) +
+  geom_sf(data = rc4) +
+  #geom_sf(data = ssmu, color="grey", fill=NA)+
+    #scale_fill_scico(palette = "davos") +
+  coord_sf() +
+  scale_alpha(guide="none")+
+  xlab(expression(paste(Longitude^o,~'O'))) +
+  ylab(expression(paste(Latitude^o,~'S')))+
+  guides(colour = guide_legend()) +
+  theme(panel.background = element_rect(fill = 'aliceblue'),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())+
+  xlim(-69,-45)+
+  ylim(-68,-55)
+mas2
+```
+
+Otro intento con la libreria CCAMLRGIS
+```{r}
+
+# con librarya CCAMLRGIS
+ac <- subset(Coast[c(4,6,7),])
+class(ac)
+
+BNG_Grid_sp <- spTransform(ac, CRS("+init=epsg:4326"))
+
+ac1 <- st_as_sf(BNG_Grid_sp)
+
+ggplot() +
+  geom_sf(data = ac1, alpha = NA)+
+  theme_minimal()
+  
+```
+
+
+```{r}
+# disponer los datos dentro de la grilla
+
+Grid3 <- ac1 %>%
+  st_make_grid(cellsize = c(0.5,0.25)) %>% # para que quede cuadrada
+  st_cast("MULTIPOLYGON") %>%
+  st_sf() %>% # objeto en spatial feature
+  mutate(cellid = row_number()) 
+
+# la pruebo
+
+ggplot() +
+  geom_sf(data = Grid3, color="grey",  fill=NA) +
+  geom_sf(data = ac1, fill=NA) +
+  theme_minimal()
+```
+## Join data to grid
+
+```{r}
+# join data to grid; make sure to join points to grid
+# the first object drives the output geometry
+result3 <- Grid3 %>%
+  st_join(catk2) %>% 
+  group_by(cellid, year, month) %>% 
+  summarise(mean_cpue = mean(CPUE)) 
+
+# 
+# result2 <- Grid %>%
+#   st_join(catk2) %>% 
+#   group_by(cellid, year, month) %>% 
+#   summarise(mean_cpue = mean(CPUE))
+```
+
+## Plot final
+
+```{r}
+mybreaks <- c(1, 5,  10, 15,  20, 30, 50)
+mas2 <- ggplot() +
+  #geom_sf(data = ssmu2, fill=NA, color="grey")+
+  geom_sf(data=result3 %>% 
+            filter(mean_cpue>0) %>% 
+            filter(year==2010), 
+          aes(fill = mean_cpue, color="grey"), 
+          alpha=0.7, color=NA) +
+  scale_fill_viridis_c(option="magma",
+                       breaks=mybreaks, direction=-1, name="CPUE (t./ time haul)")+
+  geom_sf(data = Grid3,  fill=NA, color=NA) +
+  geom_sf(data = ac1) +
+  #geom_sf(data = ssmu, color="grey", fill=NA)+
+    #scale_fill_scico(palette = "davos") +
+  coord_sf() +
+  theme_bw()+
+  scale_alpha(guide="none")+
+  xlab(expression(paste(Longitude^o,~'O'))) +
+  ylab(expression(paste(Latitude^o,~'S')))+
+  guides(colour = guide_legend()) +
+  theme(panel.background = element_rect(fill = 'aliceblue'),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())+
+  ylim(-70,-53)
+
+mas3 <- ggplot() +
+  #geom_sf(data = ssmu2, fill=NA, color="grey")+
+  geom_sf(data=result3 %>% 
+            filter(mean_cpue>0) %>% 
+            filter(year==2018), 
+          aes(fill = mean_cpue), 
+          alpha=0.7, color=NA) +
+  scale_fill_viridis_c(option="magma",
+                       breaks=seq(0,25, by=5), direction=-1, name="CPUE (t./ time haul)")+
+  geom_sf(data = Grid3,  fill=NA, color=NA) +
+  geom_sf(data = ac1) +
+  #geom_sf(data = ssmu, color="grey", fill=NA)+
+    #scale_fill_scico(palette = "davos") +
+  coord_sf() +
+  theme_bw()+
+  scale_alpha(guide="none")+
+  xlab(expression(paste(Longitude^o,~'O'))) +
+  ylab(expression(paste(Latitude^o,~'S')))+
+  guides(colour = guide_legend()) +
+  theme(panel.background = element_rect(fill = 'aliceblue'),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())+
+  ylim(-70,-53)
+mas2
+```
+## Krill base
+
+Ahora hago el analisis de densidades medias ede la kriill base
